@@ -59,6 +59,14 @@ namespace webots_ros2_control {
     std::array<double, 10> imu_sensor_data;
   };
 
+  struct ForceTorqueSensor {
+    std::string name;
+    WbDeviceTag touch_sensor;
+
+    std::vector<std::string> state_interfaces;
+    std::array<double, 6> force_torque_sensor_data;
+  };
+
   class Ros2ControlSystem : public Ros2ControlSystemInterface {
   public:
     Ros2ControlSystem();
@@ -80,6 +88,9 @@ namespace webots_ros2_control {
     static constexpr auto imu_type_name = "IMU";
     static constexpr int imu_default_update_rate = 500;
 
+    static constexpr auto ft_sensor_type_name = "FTSensor";
+    static constexpr int ft_sensor_default_update_rate = 500;
+
     const std::unordered_map<std::string, size_t> imu_interface_name_map = {
       {"orientation.x", 0},
       {"orientation.y", 1},
@@ -93,11 +104,21 @@ namespace webots_ros2_control {
       {"linear_acceleration.z", 9},
     };
 
+    const std::unordered_map<std::string, size_t> ft_interface_name_map = {
+      {"force.x", 0},
+      {"force.y", 1},
+      {"force.z", 2},
+      {"torque.x", 3},
+      {"torque.y", 4},
+      {"torque.z", 5},
+    };
+
     void registerSensors(const hardware_interface::HardwareInfo & hardware_info);
 
     webots_ros2_driver::WebotsNode *mNode;
     std::vector<Joint> mJoints;
     std::vector<Imu> mImus;
+    std::vector<ForceTorqueSensor> mForceTorqueSensors;
   };
 }  // namespace webots_ros2_control
 

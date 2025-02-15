@@ -29,6 +29,7 @@
 #include <webots/accelerometer.h>
 #include <webots/gyro.h>
 #include <webots/inertial_unit.h>
+#include <webots/touch_sensor.h>
 
 namespace webots_ros2_control {
   Ros2ControlSystem::Ros2ControlSystem() {
@@ -127,6 +128,16 @@ namespace webots_ros2_control {
       }
     }
 
+    for (ForceTorqueSensor& ft_sensor: mForceTorqueSensors) {
+      for (auto& state_interface: ft_sensor.state_interfaces) {
+        if (ft_interface_name_map.find(state_interface) == ft_interface_name_map.end()) {
+          throw std::runtime_error("Invalid ForceTorqueSensor state interface name `" + state_interface + "`");
+        }
+        interfaces.emplace_back(
+          hardware_interface::StateInterface(ft_sensor.name, state_interface, &(ft_sensor.force_torque_sensor_data[ft_interface_name_map.at(state_interface)])));
+      }
+    }
+
     return interfaces;
   }
 
@@ -202,6 +213,25 @@ namespace webots_ros2_control {
         imu.imu_sensor_data[imu_interface_name_map.at("linear_acceleration.x")] = accel_data[0];
         imu.imu_sensor_data[imu_interface_name_map.at("linear_acceleration.y")] = accel_data[1];
         imu.imu_sensor_data[imu_interface_name_map.at("linear_acceleration.z")] = accel_data[2];
+      }
+    }
+
+    for (auto& ft_sensor: mForceTorqueSensors) {
+      if (wb_touch_sensor_get_sampling_period(ft_sensor.touch_sensor) == 0) {
+        continue;
+      }
+
+      if (ft_sensor.touch_sensor) {
+        const double *force_3d_data = wb_touch_sensor_get_values(ft_sensor.touch_sensor);
+        ft_sensor.force_torque_sensor_data[ft_interface_name_map.at("force.x")] = force_3d_data[0];
+        ft_sensor.force_torque_sensor_data[ft_interface_name_map.at("force.y")] = force_3d_data[1];
+        ft_sensor.force_torque_sensor_data[ft_interface_name_map.at("force.z")] = force_3d_data[2];
+        // TODO (rdu): torque values are not available in the Webots API at the moment
+        ft_sensor.force_torque_sensor_data[ft_interface_name_map.at("torque.x")] = 0.0;
+        ft_sensor.force_torque_sensor_data[ft_interface_name_map.at("torque.y")] = 0.0;
+        ft_sensor.force_torque_sensor_data[ft_interface_name_map.at("torque.z")] = 0.0;
+
+        // std::cout << "==========> force: " << force_3d_data[0] << ", " << force_3d_data[1] << ", " << force_3d_data[2] << std::endl;
       }
     }
 
@@ -281,6 +311,34 @@ namespace webots_ros2_control {
           mImus.push_back(imu);
 
           std::cout << "IMU sensor " << imu.name << " registered successfully" << std::endl;
+        } else if (sensor_type == ft_sensor_type_name) {
+          ForceTorqueSensor ft_sensor;
+
+          ft_sensor.name = component.name;
+
+          for (auto& state_interface: component.state_interfaces) {
+              ft_sensor.state_interfaces.push_back(state_interface.name);
+          }
+
+          ft_sensor.touch_sensor = wb_robot_get_device(ft_sensor.name.c_str());
+          if (ft_sensor.touch_sensor == 0 || wb_device_get_node_type(ft_sensor.touch_sensor) != WB_NODE_TOUCH_SENSOR
+            || wb_touch_sensor_get_type(ft_sensor.touch_sensor) != WB_TOUCH_SENSOR_FORCE3D) {
+              throw std::runtime_error("Cannot find ForceTorqueSensor of type force-3d with name " + ft_sensor.name);
+          }
+
+          int update_rate = ft_sensor_default_update_rate;
+          if (component.parameters.find("update_rate") != component.parameters.end()) {
+              update_rate = std::stoi(component.parameters.at("update_rate"));
+          }
+          int sampling_period = static_cast<int>(1000.0f / update_rate);
+
+          wb_touch_sensor_enable(ft_sensor.touch_sensor, sampling_period);
+
+          mForceTorqueSensors.push_back(ft_sensor);
+
+          std::cout << "ForceTorqueSensor " << ft_sensor.name << " registered successfully" << std::endl;
+        } else {
+          std::cerr << "Unknown sensor type: " << sensor_type << std::endl;
         }
       }
     }
