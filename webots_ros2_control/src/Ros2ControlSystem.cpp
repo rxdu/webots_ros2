@@ -26,6 +26,9 @@
 
 #include <webots/device.h>
 #include <webots/robot.h>
+#include <webots/accelerometer.h>
+#include <webots/gyro.h>
+#include <webots/inertial_unit.h>
 
 namespace webots_ros2_control {
   Ros2ControlSystem::Ros2ControlSystem() {
@@ -88,6 +91,8 @@ namespace webots_ros2_control {
 
       mJoints.push_back(joint);
     }
+
+    registerSensors(info);
   }
 
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn Ros2ControlSystem::on_init(
@@ -101,7 +106,7 @@ namespace webots_ros2_control {
 
   std::vector<hardware_interface::StateInterface> Ros2ControlSystem::export_state_interfaces() {
     std::vector<hardware_interface::StateInterface> interfaces;
-    for (Joint &joint : mJoints)
+    for (Joint &joint : mJoints) {
       if (joint.sensor) {
         interfaces.emplace_back(
           hardware_interface::StateInterface(joint.name, hardware_interface::HW_IF_POSITION, &(joint.position)));
@@ -110,6 +115,17 @@ namespace webots_ros2_control {
         interfaces.emplace_back(
           hardware_interface::StateInterface(joint.name, hardware_interface::HW_IF_ACCELERATION, &(joint.acceleration)));
       }
+    }
+
+    for (Imu& imu: mImus) {
+      for (auto& state_interface: imu.state_interfaces) {
+        if (imu_interface_name_map.find(state_interface) == imu_interface_name_map.end()) {
+          throw std::runtime_error("Invalid IMU state interface name `" + state_interface + "`");
+        }
+        interfaces.emplace_back(
+          hardware_interface::StateInterface(imu.name, state_interface, &(imu.imu_sensor_data[imu_interface_name_map.at(state_interface)])));
+      }
+    }
 
     return interfaces;
   }
@@ -159,6 +175,36 @@ namespace webots_ros2_control {
       }
     }
 
+    for (auto& imu: mImus) {
+      if (wb_inertial_unit_get_sampling_period(imu.inertial) == 0 ||
+          wb_gyro_get_sampling_period(imu.gyro) == 0 ||
+          wb_accelerometer_get_sampling_period(imu.accelerometer) == 0) {
+        continue;
+      }
+
+      if (imu.inertial) {
+        const double *imu_data = wb_inertial_unit_get_quaternion(imu.inertial);
+        imu.imu_sensor_data[imu_interface_name_map.at("orientation.x")] = imu_data[0];
+        imu.imu_sensor_data[imu_interface_name_map.at("orientation.y")] = imu_data[1];
+        imu.imu_sensor_data[imu_interface_name_map.at("orientation.z")] = imu_data[2];
+        imu.imu_sensor_data[imu_interface_name_map.at("orientation.w")] = imu_data[3];
+      }
+
+      if (imu.gyro) {
+        const double *gyro_data = wb_gyro_get_values(imu.gyro);
+        imu.imu_sensor_data[imu_interface_name_map.at("angular_velocity.x")] = gyro_data[0];
+        imu.imu_sensor_data[imu_interface_name_map.at("angular_velocity.y")] = gyro_data[1];
+        imu.imu_sensor_data[imu_interface_name_map.at("angular_velocity.z")] = gyro_data[2];
+      }
+
+      if (imu.accelerometer) {
+        const double *accel_data = wb_accelerometer_get_values(imu.accelerometer);
+        imu.imu_sensor_data[imu_interface_name_map.at("linear_acceleration.x")] = accel_data[0];
+        imu.imu_sensor_data[imu_interface_name_map.at("linear_acceleration.y")] = accel_data[1];
+        imu.imu_sensor_data[imu_interface_name_map.at("linear_acceleration.z")] = accel_data[2];
+      }
+    }
+
     return hardware_interface::return_type::OK;
   }
 
@@ -177,6 +223,67 @@ namespace webots_ros2_control {
       }
     }
     return hardware_interface::return_type::OK;
+  }
+
+  void Ros2ControlSystem::registerSensors(const hardware_interface::HardwareInfo & hardware_info) {
+    // Collect sensor handles
+    size_t n_sensors = hardware_info.sensors.size();
+    std::vector<hardware_interface::ComponentInfo> sensor_components_;
+
+    for (unsigned int j = 0; j < n_sensors; j++) {
+      hardware_interface::ComponentInfo component = hardware_info.sensors[j];
+      sensor_components_.push_back(component);
+      std::cout << "------------------------------------------------" << std::endl;
+      std::cout << "Found sensor: " << component.name << std::endl;
+
+      if (component.parameters.find("type") == component.parameters.end()) {
+        std::cerr << "Sensor type not specified for sensor " << component.name << std::endl;
+        continue;
+      } else {
+        std::string sensor_type = component.parameters.at("type");
+        if (sensor_type == imu_type_name) {
+          Imu imu;
+
+          imu.name = component.name;
+          std::string inertial_name = imu.name + "/inertial";
+          std::string gyro_name = imu.name + "/gyro";
+          std::string accelerometer_name = imu.name + "/accelerometer";
+
+          for (auto& state_interface: component.state_interfaces) {
+            imu.state_interfaces.push_back(state_interface.name);
+          }
+
+          imu.inertial = wb_robot_get_device(inertial_name.c_str());
+          if (imu.inertial == 0 || wb_device_get_node_type(imu.inertial) != WB_NODE_INERTIAL_UNIT) {
+            throw std::runtime_error("Cannot find InertialUnit with name " + imu.name);
+          }
+
+          imu.gyro = wb_robot_get_device(gyro_name.c_str());
+          if (imu.gyro == 0 || wb_device_get_node_type(imu.gyro) != WB_NODE_GYRO) {
+            throw std::runtime_error("Cannot find Gyro with name " + imu.name);
+          }
+
+          imu.accelerometer = wb_robot_get_device(accelerometer_name.c_str());
+          if (imu.accelerometer == 0 || wb_device_get_node_type(imu.accelerometer) != WB_NODE_ACCELEROMETER) {
+            throw std::runtime_error("Cannot find Accelerometer with name " + imu.name);
+          }
+
+          int update_rate = imu_default_update_rate;
+          if (component.parameters.find("update_rate") != component.parameters.end()) {
+            update_rate = std::stoi(component.parameters.at("update_rate"));
+          }
+          int sampling_period = static_cast<int>(1000.0f / update_rate);
+
+          wb_inertial_unit_enable(imu.inertial, sampling_period);
+          wb_gyro_enable(imu.gyro, sampling_period);
+          wb_accelerometer_enable(imu.accelerometer, sampling_period);
+
+          mImus.push_back(imu);
+
+          std::cout << "IMU sensor " << imu.name << " registered successfully" << std::endl;
+        }
+      }
+    }
   }
 }  // namespace webots_ros2_control
 

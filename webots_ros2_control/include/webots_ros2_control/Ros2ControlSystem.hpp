@@ -16,8 +16,10 @@
 #define ROS2_CONTROL_HPP
 
 #include <memory>
+#include <array>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 #include "hardware_interface/handle.hpp"
 #include "hardware_interface/hardware_info.hpp"
@@ -47,6 +49,16 @@ namespace webots_ros2_control {
     WbDeviceTag sensor;
   };
 
+  struct Imu {
+    std::string name;
+    WbDeviceTag inertial;
+    WbDeviceTag gyro;
+    WbDeviceTag accelerometer;
+
+    std::vector<std::string> state_interfaces;
+    std::array<double, 10> imu_sensor_data;
+  };
+
   class Ros2ControlSystem : public Ros2ControlSystemInterface {
   public:
     Ros2ControlSystem();
@@ -65,8 +77,27 @@ namespace webots_ros2_control {
     hardware_interface::return_type write(const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/) override;
 
   private:
+    static constexpr auto imu_type_name = "IMU";
+    static constexpr int imu_default_update_rate = 500;
+
+    const std::unordered_map<std::string, size_t> imu_interface_name_map = {
+      {"orientation.x", 0},
+      {"orientation.y", 1},
+      {"orientation.z", 2},
+      {"orientation.w", 3},
+      {"angular_velocity.x", 4},
+      {"angular_velocity.y", 5},
+      {"angular_velocity.z", 6},
+      {"linear_acceleration.x", 7},
+      {"linear_acceleration.y", 8},
+      {"linear_acceleration.z", 9},
+    };
+
+    void registerSensors(const hardware_interface::HardwareInfo & hardware_info);
+
     webots_ros2_driver::WebotsNode *mNode;
     std::vector<Joint> mJoints;
+    std::vector<Imu> mImus;
   };
 }  // namespace webots_ros2_control
 
