@@ -186,6 +186,11 @@ namespace webots_ros2_control {
       }
     }
 
+    // std::cout << "joint positions: " << std::endl;
+    // for (auto& joint: mJoints) {
+    //     std::cout << " - " << joint.name << ": " << joint.position << std::endl;
+    // }
+
     for (auto& imu: mImus) {
       if (wb_inertial_unit_get_sampling_period(imu.inertial) == 0 ||
           wb_gyro_get_sampling_period(imu.gyro) == 0 ||
@@ -298,11 +303,11 @@ namespace webots_ros2_control {
             throw std::runtime_error("Cannot find Accelerometer with name " + imu.name);
           }
 
-          int update_rate = imu_default_update_rate;
+          int sampling_period = wb_robot_get_basic_time_step();
           if (component.parameters.find("update_rate") != component.parameters.end()) {
-            update_rate = std::stoi(component.parameters.at("update_rate"));
+            int update_rate = std::stoi(component.parameters.at("update_rate"));
+            sampling_period = static_cast<int>(1000.0f / update_rate);
           }
-          int sampling_period = static_cast<int>(1000.0f / update_rate);
 
           wb_inertial_unit_enable(imu.inertial, sampling_period);
           wb_gyro_enable(imu.gyro, sampling_period);
@@ -326,11 +331,11 @@ namespace webots_ros2_control {
               throw std::runtime_error("Cannot find ForceTorqueSensor of type force-3d with name " + ft_sensor.name);
           }
 
-          int update_rate = ft_sensor_default_update_rate;
+          int sampling_period = wb_robot_get_basic_time_step();
           if (component.parameters.find("update_rate") != component.parameters.end()) {
-              update_rate = std::stoi(component.parameters.at("update_rate"));
+            int update_rate = std::stoi(component.parameters.at("update_rate"));
+            sampling_period = static_cast<int>(1000.0f / update_rate);
           }
-          int sampling_period = static_cast<int>(1000.0f / update_rate);
 
           wb_touch_sensor_enable(ft_sensor.touch_sensor, sampling_period);
 

@@ -86,10 +86,7 @@ namespace webots_ros2_control {
 
   private:
     static constexpr auto imu_type_name = "IMU";
-    static constexpr int imu_default_update_rate = 500;
-
     static constexpr auto ft_sensor_type_name = "FTSensor";
-    static constexpr int ft_sensor_default_update_rate = 500;
 
     const std::unordered_map<std::string, size_t> imu_interface_name_map = {
       {"orientation.x", 0},
