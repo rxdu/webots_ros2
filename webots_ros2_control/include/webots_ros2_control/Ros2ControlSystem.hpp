@@ -56,7 +56,7 @@ namespace webots_ros2_control {
     WbDeviceTag accelerometer;
 
     std::vector<std::string> state_interfaces;
-    std::array<double, 10> imu_sensor_data;
+    std::array<double, 10> imu_sensor_data = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
   };
 
   struct ForceTorqueSensor {
@@ -64,7 +64,7 @@ namespace webots_ros2_control {
     WbDeviceTag touch_sensor;
 
     std::vector<std::string> state_interfaces;
-    std::array<double, 6> force_torque_sensor_data;
+    std::array<double, 6> force_torque_sensor_data = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
   };
 
   class Ros2ControlSystem : public Ros2ControlSystemInterface {
