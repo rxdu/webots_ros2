@@ -221,6 +221,7 @@ namespace webots_ros2_control {
       }
     }
 
+    // std::unordered_map<std::string, double> force_mag;
     for (auto& ft_sensor: mForceTorqueSensors) {
       if (wb_touch_sensor_get_sampling_period(ft_sensor.touch_sensor) == 0) {
         continue;
@@ -236,9 +237,15 @@ namespace webots_ros2_control {
         ft_sensor.force_torque_sensor_data[ft_interface_name_map.at("torque.y")] = 0.0;
         ft_sensor.force_torque_sensor_data[ft_interface_name_map.at("torque.z")] = 0.0;
 
-        // std::cout << "==========> force: " << force_3d_data[0] << ", " << force_3d_data[1] << ", " << force_3d_data[2] << std::endl;
+        // double force_magnitude = sqrt(pow(force_3d_data[0], 2) + pow(force_3d_data[1], 2) + pow(force_3d_data[2], 2));
+        // force_mag[ft_sensor.name] = force_magnitude;
       }
     }
+    // std::cout << "Force: ";
+    // for (auto& [name, force]: force_mag) {
+    //   std::cout << name << ": " << force << " ";
+    // }
+    // std::cout << std::endl;
 
     return hardware_interface::return_type::OK;
   }
